@@ -1,77 +1,33 @@
 import { NextResponse } from "next/server";
-import { client } from "@/lib/sanityClient";
+import { logApiExecution, logBackendForward } from "@/lib/logger";
 
-function getAllJoinUsSheetBestLinks(links: any) {
-  const sheetLinks = [
-    links?.competitiveProgrammingSheetBest,
-    links?.designSheetBest,
-    links?.managementSheetBest,
-    links?.marketingOutreachSheetBest,
-    links?.projectsSheetBest,
-    links?.socialMediaContentSheetBest,
-    links?.webDevelopmentSheetBest,
-  ];
-
-  if (!sheetLinks.some(Boolean) && links?.joinUsSheetBest) {
-    sheetLinks.push(links.joinUsSheetBest);
-  }
-
-  return [...new Set(sheetLinks.filter(Boolean))];
-}
+const EXPRESS_BASE_URL = process.env.EXPRESS_API_URL || "http://localhost:4002";
 
 export async function GET() {
+  const start = Date.now();
+  const pathname = "/api/recruitment/read";
+
   try {
-    const query = `*[_type == "recruitmentSheetLinks"] | order(_createdAt desc)[0]`;
-    const links = await client.fetch(query);
+    const targetUrl = `${EXPRESS_BASE_URL}/api/applicants/public-check`;
+    logBackendForward("GET", pathname, targetUrl);
 
-    if (!links) {
-      return NextResponse.json({ error: "No sheet links found in Sanity" }, { status: 404 });
-    }
+    const res = await fetch(targetUrl, {
+      cache: "no-store",
+    });
 
-    const departmentUrls = [
-      { department: "competitive_programming", url: links?.competitiveProgrammingSheetBest },
-      { department: "design", url: links?.designSheetBest },
-      { department: "management", url: links?.managementSheetBest },
-      { department: "marketing_and_outreach", url: links?.marketingOutreachSheetBest },
-      { department: "projects", url: links?.projectsSheetBest },
-      { department: "social_media_and_content", url: links?.socialMediaContentSheetBest },
-      { department: "web_development", url: links?.webDevelopmentSheetBest },
-    ].filter(item => Boolean(item.url));
-
-    if (!departmentUrls.length && links?.joinUsSheetBest) {
-      departmentUrls.push({ department: "general", url: links.joinUsSheetBest });
-    }
-
-    if (!departmentUrls.length) {
+    if (!res.ok) {
+      logApiExecution("GET", pathname, res.status, Date.now() - start, "Express check non-200");
       return NextResponse.json([]);
     }
 
-    const sheetData = await Promise.all(
-      departmentUrls.map(async (item) => {
-        try {
-          const res = await fetch(item.url!);
-          if (!res.ok) {
-            console.error(`Failed to fetch from ${item.url}:`, res.statusText);
-            return [];
-          }
-          const rows = await res.json();
-          if (Array.isArray(rows)) {
-            return rows.map((row: any) => ({
-              ...row,
-              _sheetDepartment: item.department
-            }));
-          }
-          return [];
-        } catch (err) {
-          console.error(`Error fetching sheet ${item.url}:`, err);
-          return [];
-        }
-      })
-    );
-
-    return NextResponse.json(sheetData.flat());
-  } catch (error: any) {
-    console.error("Error reading recruitment data:", error);
-    return NextResponse.json({ error: "Internal Server Error", details: error.message }, { status: 500 });
+    const data = await res.json();
+    const result = Array.isArray(data) ? data : [];
+    logApiExecution("GET", pathname, 200, Date.now() - start, `Returned ${result.length} duplicate entries`);
+    return NextResponse.json(result);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Internal Server Error";
+    console.error("Error reading recruitment duplicate list:", msg);
+    logApiExecution("GET", pathname, 500, Date.now() - start, "Backend unreachable, fallback empty array");
+    return NextResponse.json([]);
   }
 }

@@ -1,21 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { client } from "@/lib/sanityClient";
+import { logApiExecution, logBackendForward } from "@/lib/logger";
 
-function getJoinUsSheetBestLink(links: any, department: string) {
-  const departmentSheetBestLinks: Record<string, string | undefined> = {
-    competitive_programming: links?.competitiveProgrammingSheetBest,
-    design: links?.designSheetBest,
-    management: links?.managementSheetBest,
-    marketing_and_outreach: links?.marketingOutreachSheetBest,
-    projects: links?.projectsSheetBest,
-    social_media_and_content: links?.socialMediaContentSheetBest,
-    web_development: links?.webDevelopmentSheetBest,
-  };
-
-  return departmentSheetBestLinks[department] || links?.joinUsSheetBest;
-}
-
-function copyFirstPresent(target: Record<string, any>, source: Record<string, any>, key: string, aliases: string[] = []) {
+// Keep all normalization helpers unchanged
+function copyFirstPresent(target: Record<string, unknown>, source: Record<string, unknown>, key: string, aliases: string[] = []) {
   const keys = [key, `pref2_${key}`, ...aliases, ...aliases.map((alias) => `pref2_${alias}`)];
   for (const candidate of keys) {
     if (source[candidate] !== undefined && source[candidate] !== null && source[candidate] !== "") {
@@ -25,18 +12,11 @@ function copyFirstPresent(target: Record<string, any>, source: Record<string, an
   }
 }
 
-function normalizeRecruitmentData(data: Record<string, any>) {
-  if (!["design", "management", "marketing_and_outreach"].includes(data.department)) {
-    return data;
-  }
-
-  const normalized: Record<string, any> = { ...data };
-
+function normalizeRecruitmentData(data: Record<string, unknown>) {
+  if (typeof data.department !== "string" || !["design", "management", "marketing_and_outreach"].includes(data.department)) return data;
+  const normalized: Record<string, unknown> = { ...data };
   const commonFields = ["name", "reg_no", "vit_email", "phone_no", "degree", "branch", "experience", "whyJoin", "department", "cgpa"];
-  for (const field of commonFields) {
-    copyFirstPresent(normalized, data, field);
-  }
-
+  for (const field of commonFields) copyFirstPresent(normalized, data, field);
   if (data.department === "design") {
     copyFirstPresent(normalized, data, "designSkills", ["designSoftware"]);
     copyFirstPresent(normalized, data, "whyDesign");
@@ -55,59 +35,48 @@ function normalizeRecruitmentData(data: Record<string, any>) {
     copyFirstPresent(normalized, data, "promoteEvent", ["outreachCaptions"]);
     copyFirstPresent(normalized, data, "moreParticipants");
   }
-
   for (const key of Object.keys(normalized)) {
-    if (key.startsWith("pref2_") || normalized[key] === undefined || normalized[key] === null) {
-      delete normalized[key];
-    }
+    if (key.startsWith("pref2_") || normalized[key] === undefined || normalized[key] === null) delete normalized[key];
   }
-
   return normalized;
 }
 
+const EXPRESS_BASE_URL = process.env.EXPRESS_API_URL || "http://localhost:4002";
+
 export async function POST(req: NextRequest) {
+  const start = Date.now();
+  const pathname = "/api/recruitment/add";
+
   try {
     const { data: rawData } = await req.json();
-
     if (!rawData || !rawData.department) {
+      logApiExecution("POST", pathname, 400, Date.now() - start, "Missing department");
       return NextResponse.json({ error: "Missing submission data or department" }, { status: 400 });
     }
 
     const data = normalizeRecruitmentData(rawData);
+    const targetUrl = `${EXPRESS_BASE_URL}/api/applicants`;
+    logBackendForward("POST", pathname, targetUrl);
 
-    const query = `*[_type == "recruitmentSheetLinks"] | order(_createdAt desc)[0]`;
-    const links = await client.fetch(query);
-
-    if (!links) {
-      return NextResponse.json({ error: "No sheet links found in Sanity" }, { status: 404 });
-    }
-
-    const joinUsGoogleSheetLink = getJoinUsSheetBestLink(links, data.department);
-
-    if (!joinUsGoogleSheetLink) {
-      return NextResponse.json({
-        error: "No Sheet.best API link configured for department: " + data.department
-      }, { status: 400 });
-    }
-
-    const res = await fetch(joinUsGoogleSheetLink, {
+    const res = await fetch(targetUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
 
     if (!res.ok) {
-      const errorText = await res.text();
-      console.error("Sheet.best post failed:", errorText);
-      return NextResponse.json({ error: "Failed to submit data to Sheet.best" }, { status: res.status });
+      const err = await res.json().catch(() => ({}));
+      logApiExecution("POST", pathname, res.status, Date.now() - start, "Express save failed");
+      return NextResponse.json({ error: err.error || "Failed to save application" }, { status: res.status });
     }
 
     const resData = await res.json();
+    logApiExecution("POST", pathname, 201, Date.now() - start, `Saved applicant for ${String(data.department)}`);
     return NextResponse.json(resData);
-  } catch (error: any) {
-    console.error("Error adding recruitment entry:", error);
-    return NextResponse.json({ error: "Internal Server Error", details: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Internal Server Error";
+    console.error("Error saving recruitment entry:", error);
+    logApiExecution("POST", pathname, 500, Date.now() - start, msg);
+    return NextResponse.json({ error: "Internal Server Error", details: msg }, { status: 500 });
   }
 }
