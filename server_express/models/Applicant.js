@@ -13,6 +13,14 @@ const applicantSchema = new mongoose.Schema(
     department: { type: String, required: true },
     cgpa: { type: String, default: "" },
     deptFields: { type: mongoose.Schema.Types.Mixed, default: {} },
+    status: {
+      type: String,
+      enum: ["PENDING", "SHORTLISTED", "REJECTED"],
+      default: "PENDING",
+    },
+    statusUpdatedAt: { type: Date },
+    statusUpdatedBy: { type: String, default: "" },
+    evaluationNotes: { type: String, default: "" },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true }

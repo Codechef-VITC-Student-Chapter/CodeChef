@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import Image from "next/image";
 import RecruitmentDashboard from "@/components/Admin/RecruitmentDashboard";
 import LogoutButton from "@/components/Admin/LogoutButton";
 import { logBackendForward, logApiExecution } from "@/lib/logger";
@@ -39,7 +40,13 @@ async function getApplicants(token: string, dept?: string) {
       cache: "no-store",
     });
     const data = res.ok ? await res.json() : { applicants: [], total: 0 };
-    logApiExecution("GET", "/api/applicants", res.status, Date.now() - start, `Loaded ${data.applicants?.length || 0} applicants`);
+    logApiExecution(
+      "GET",
+      "/api/applicants",
+      res.status,
+      Date.now() - start,
+      `Loaded ${data.applicants?.length || 0} applicants`
+    );
     return data;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
@@ -58,7 +65,13 @@ async function getAdmins(token: string) {
       cache: "no-store",
     });
     const data = res.ok ? await res.json() : [];
-    logApiExecution("GET", "/api/auth/admins", res.status, Date.now() - start, `Loaded ${data.length || 0} admins`);
+    logApiExecution(
+      "GET",
+      "/api/auth/admins",
+      res.status,
+      Date.now() - start,
+      `Loaded ${data.length || 0} admins`
+    );
     return data;
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown error";
@@ -86,40 +99,73 @@ export default async function RecruitmentAdminPage({
   ]);
 
   return (
-    <main className="min-h-screen w-full bg-white">
-      <header className="border-b-2 border-black px-6 py-4 flex items-center justify-between bg-white sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <h1
-            className="text-2xl text-black tracking-widest uppercase"
-            style={{ fontFamily: "var(--font-bebas)" }}
-          >
-            CodeChef Admin
-          </h1>
-          <span
-            className="text-xs border-2 border-black px-2 py-0.5 rounded-[6px] uppercase tracking-wider font-bold"
-            style={{
-              backgroundColor: session.role === "super_admin" ? "#ECE9C7" : "#e0e7ff",
-              fontFamily: "var(--font-bebas)",
-            }}
-          >
-            {session.role === "super_admin" ? "⭐ Super Admin" : `Admin · ${session.department?.replace(/_/g, " ")}`}
-          </span>
+    <main className="min-h-screen w-full bg-[#FAFAFA] bg-[radial-gradient(#CBD5E1_1px,transparent_1px)] [background-size:24px_24px] text-slate-900">
+      {/* ── Top Navigation Bar ────────────────────────────────────────── */}
+      <header className="border-b-2 border-black px-4 sm:px-8 py-3.5 flex items-center justify-between bg-white/95 backdrop-blur-md sticky top-0 z-40 shadow-[0_2px_0px_rgba(0,0,0,0.06)]">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="relative w-9 h-9 sm:w-10 sm:h-10 border-2 border-black rounded-[8px] bg-[#5878AF] p-1 shadow-[2px_2px_0px_#000] flex items-center justify-center overflow-hidden">
+            <Image
+              src="/images/mascot_hat.png"
+              alt="CodeChef Mascot"
+              width={36}
+              height={36}
+              className="object-contain"
+              priority
+            />
+          </div>
+
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span
+                className="text-xl sm:text-2xl text-black tracking-widest font-black leading-none"
+                style={{ fontFamily: "var(--font-bebas)" }}
+              >
+                CODECHEF
+              </span>
+              <span className="text-[10px] font-black tracking-wider uppercase bg-[#ECE9C7] text-black border border-black px-1.5 py-0.5 rounded-[4px] shadow-[1px_1px_0px_#000]">
+                VIT CHENNAI
+              </span>
+            </div>
+            <span className="text-[11px] font-semibold text-slate-500 tracking-wider uppercase font-sans">
+              Admin Command Center
+            </span>
+          </div>
+
+          <div className="hidden md:flex items-center gap-2 pl-3 border-l-2 border-slate-300">
+            <span
+              className={`text-xs border-2 border-black px-2.5 py-0.5 rounded-[6px] uppercase tracking-wider font-bold shadow-[2px_2px_0px_#000] ${
+                session.role === "super_admin"
+                  ? "bg-[#ECE9C7] text-black"
+                  : "bg-[#E0E7FF] text-[#3730A3]"
+              }`}
+              style={{ fontFamily: "var(--font-bebas)", fontSize: "0.85rem" }}
+            >
+              {session.role === "super_admin"
+                ? "⭐ Super Admin"
+                : `Dept Admin · ${session.department?.replace(/_/g, " ")}`}
+            </span>
+            <span className="text-xs font-mono font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-300">
+              {session.email}
+            </span>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
+
+        <div className="flex items-center gap-2.5 sm:gap-3">
           {session.role === "super_admin" && (
             <a
               href="/admin"
-              className="text-sm font-bold text-black border-2 border-black rounded-[8px] px-4 py-1.5 uppercase tracking-wider shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:bg-[#ECE9C7] transition-colors"
+              className="hidden sm:inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold text-black border-2 border-black rounded-[8px] px-3.5 py-1.5 uppercase tracking-wider bg-white hover:bg-[#ECE9C7] transition-all shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_rgba(0,0,0,1)]"
               style={{ fontFamily: "var(--font-bebas)", fontSize: "0.85rem" }}
             >
-              ← Members
+              ← Core Members
             </a>
           )}
           <LogoutButton />
         </div>
       </header>
 
-      <div className="max-w-[1400px] mx-auto px-4 py-8">
+      {/* ── Main Dashboard Container ──────────────────────────────────── */}
+      <div className="max-w-[1480px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <RecruitmentDashboard
           initialApplicants={applicants}
           total={total}

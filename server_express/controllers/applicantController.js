@@ -120,4 +120,93 @@ const deactivateApplicant = async (req, res) => {
   }
 };
 
-module.exports = { saveApplicant, getPublicEntries, getApplicants, deactivateApplicant };
+// Authenticated: Update an applicant's evaluation status (SHORTLISTED, REJECTED, PENDING)
+const updateApplicantStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes } = req.body;
+    const { role, department, email } = req.adminUser;
+
+    const validStatuses = ["PENDING", "SHORTLISTED", "REJECTED"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be PENDING, SHORTLISTED, or REJECTED" });
+    }
+
+    const applicant = await Applicant.findById(id);
+    if (!applicant) return res.status(404).json({ error: "Applicant not found" });
+
+    // Authorization check: Department admins can only evaluate candidates in their own department
+    if (role !== "super_admin" && applicant.department !== department) {
+      return res.status(403).json({ error: "Forbidden: You can only evaluate candidates in your assigned department" });
+    }
+
+    applicant.status = status;
+    applicant.statusUpdatedAt = new Date();
+    applicant.statusUpdatedBy = email || "admin";
+    if (typeof notes === "string") {
+      applicant.evaluationNotes = notes;
+    }
+
+    await applicant.save();
+    return res.status(200).json({
+      _id: applicant._id,
+      status: applicant.status,
+      statusUpdatedAt: applicant.statusUpdatedAt,
+      statusUpdatedBy: applicant.statusUpdatedBy,
+      evaluationNotes: applicant.evaluationNotes,
+      message: `Status updated to ${status}`,
+    });
+  } catch (err) {
+    console.error("Update status error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+// Authenticated: Bulk update applicant statuses
+const bulkUpdateApplicantStatus = async (req, res) => {
+  try {
+    const { ids, status } = req.body;
+    const { role, department, email } = req.adminUser;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "ids must be a non-empty array" });
+    }
+
+    const validStatuses = ["PENDING", "SHORTLISTED", "REJECTED"];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be PENDING, SHORTLISTED, or REJECTED" });
+    }
+
+    const filter = { _id: { $in: ids }, isActive: true };
+    if (role !== "super_admin") {
+      filter.department = department;
+    }
+
+    const result = await Applicant.updateMany(filter, {
+      $set: {
+        status,
+        statusUpdatedAt: new Date(),
+        statusUpdatedBy: email || "admin",
+      },
+    });
+
+    return res.status(200).json({
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+      status,
+      message: `${result.modifiedCount} applicants updated to ${status}`,
+    });
+  } catch (err) {
+    console.error("Bulk update status error:", err);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+module.exports = {
+  saveApplicant,
+  getPublicEntries,
+  getApplicants,
+  deactivateApplicant,
+  updateApplicantStatus,
+  bulkUpdateApplicantStatus,
+};

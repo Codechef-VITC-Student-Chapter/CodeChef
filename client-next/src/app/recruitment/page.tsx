@@ -48,6 +48,7 @@ export default function RecruitmentPage() {
   const [notification, setNotification] = useState<{
     type: "success" | "error" | "warning";
     message: string;
+    links?: Array<{ deptTitle: string; url: string }>;
   } | null>(null);
 
   const {
@@ -322,6 +323,8 @@ export default function RecruitmentPage() {
         throw new Error(`Failed to submit application for ${DepartmentKeyMap[department] || department}.`);
       }
 
+      const collectedLinks: Array<{ deptTitle: string; url: string }> = [];
+
       const emailRes1 = await fetch("/api/recruitment/send-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -332,8 +335,12 @@ export default function RecruitmentPage() {
         }),
       });
 
-      if (!emailRes1.ok) {
-        console.warn(`Failed to send WhatsApp link email for ${department}`);
+      const emailData1 = await emailRes1.json().catch(() => ({}));
+      if (emailData1?.whatsappLink) {
+        collectedLinks.push({
+          deptTitle: DepartmentKeyMap[department] || department,
+          url: emailData1.whatsappLink,
+        });
       }
 
       if (hasPref2) {
@@ -366,16 +373,21 @@ export default function RecruitmentPage() {
           }),
         });
 
-        if (!emailRes2.ok) {
-          console.warn(`Failed to send WhatsApp link email for ${department2}`);
+        const emailData2 = await emailRes2.json().catch(() => ({}));
+        if (emailData2?.whatsappLink) {
+          collectedLinks.push({
+            deptTitle: DepartmentKeyMap[department2] || department2,
+            url: emailData2.whatsappLink,
+          });
         }
       }
 
       setNotification({
         type: "success",
         message: hasPref2 
-          ? "Applications submitted successfully! Checked your email for BOTH WhatsApp group join links."
-          : "Application submitted successfully! Check your email for the WhatsApp group join link.",
+          ? "Applications submitted successfully! An invitation has been sent to your email, and you can also join the WhatsApp groups below directly:"
+          : "Application submitted successfully! An invitation has been sent to your email, and you can also join the WhatsApp group below directly:",
+        links: collectedLinks,
       });
       reset();
       setStep(1);
@@ -463,7 +475,22 @@ export default function RecruitmentPage() {
                     : "bg-red-100 text-red-800"
                 }`}
               >
-                {notification.message}
+                <div>{notification.message}</div>
+                {notification.links && notification.links.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2.5 pt-1">
+                    {notification.links.map((link, idx) => (
+                      <a
+                        key={idx}
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-[#25D366] text-white px-3.5 py-2 rounded-[6px] border-2 border-black text-xs font-bold uppercase tracking-wider shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:opacity-95 active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_rgba(0,0,0,1)] transition-all"
+                      >
+                        Join {link.deptTitle} WhatsApp Group ↗
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
