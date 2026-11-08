@@ -1,27 +1,78 @@
 require("dotenv").config();
-const router = require("./routes/router");
-const controller = require("./controllers/controllers");
-
 const express = require("express");
-const app = express();
-
 const cors = require("cors");
+const mongoose = require("mongoose");
 
-const PORT = 4002;
+const existingRouter = require("./routes/router");
+const authRouter = require("./routes/authRouter");
+const applicantRouter = require("./routes/applicantRouter");
+const { ensureSuperAdmin } = require("./controllers/authController");
 
-// middleware
+const app = express();
+const PORT = process.env.PORT || 4002;
+
+// 1. Request logging middleware (sanitized, zero sensitive data)
+app.use((req, res, next) => {
+  const start = Date.now();
+  const { method, originalUrl } = req;
+
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    const status = res.statusCode;
+    const color =
+      status >= 500
+        ? "\x1b[31m"
+        : status >= 400
+        ? "\x1b[33m"
+        : status >= 300
+        ? "\x1b[36m"
+        : "\x1b[32m";
+    const reset = "\x1b[0m";
+    const dim = "\x1b[2m";
+    const bold = "\x1b[1m";
+    const time = new Date().toLocaleTimeString("en-GB", { hour12: false });
+
+    console.log(
+      `${dim}[${time}]${reset} \x1b[35m[Express]${reset} ${bold}${method.padEnd(6)}${reset} ${originalUrl} ${color}${status}${reset} - ${dim}${duration}ms${reset}`
+    );
+  });
+
+  next();
+});
+
+// 2. Body parser & CORS
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://localhost:3001",
+      "http://127.0.0.1:3001",
+      "https://codechef-vitcc.com",
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
-app.use(router);
+// 3. API Routers
+app.use("/api/auth", authRouter);
+app.use("/api/applicants", applicantRouter);
+app.use(existingRouter);
 
-// Default get request
-app.get('/', (req, res) => {
-  res.json("Server working fine");
-});
+app.get("/", (req, res) => res.json({ status: "Server working fine" }));
 
-app.listen(PORT, () => {
-  console.log(`Server start at Port No : http://localhost:${PORT}`);
-});
-
-// gitignore started to work
+// 4. Database connection & Server initialization
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(async () => {
+    console.log("✅ MongoDB connected");
+    await ensureSuperAdmin();
+    app.listen(PORT, () => console.log(`🚀 Express server running at http://localhost:${PORT}`));
+  })
+  .catch((err) => {
+    console.error("❌ MongoDB connection failed:", err);
+    process.exit(1);
+  });

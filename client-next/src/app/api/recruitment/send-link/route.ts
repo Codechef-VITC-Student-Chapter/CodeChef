@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { client } from "@/lib/sanityClient";
+import { logApiExecution } from "@/lib/logger";
 
 const smtpUser = process.env.SMTP_USER;
 const smtpPass = process.env.SMTP_PASS;
@@ -17,10 +18,14 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function POST(req: NextRequest) {
+  const start = Date.now();
+  const pathname = "/api/recruitment/send-link";
+
   try {
     const { vit_email, department, name } = await req.json();
 
     if (!vit_email) {
+      logApiExecution("POST", pathname, 400, Date.now() - start, "Validation: Email required");
       return NextResponse.json({ error: "Please Provide Email" }, { status: 400 });
     }
 
@@ -171,9 +176,11 @@ export async function POST(req: NextRequest) {
       });
     });
 
+    logApiExecution("POST", pathname, 200, Date.now() - start, `Email sent to ${department}`);
     return NextResponse.json({ message: "email sent Successfully" });
   } catch (error: any) {
     console.error("Error in send-link api route:", error);
+    logApiExecution("POST", pathname, 500, Date.now() - start, error.message);
     return NextResponse.json({ error: "Failed to send email link", details: error.message }, { status: 500 });
   }
 }

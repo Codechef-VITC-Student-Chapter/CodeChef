@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { ADMIN_SESSION_COOKIE } from "@/lib/adminSession";
-import { requireAdminSession } from "@/lib/requireAdminSession";
+import { logApiExecution } from "@/lib/logger";
 
 export async function POST() {
-  const session = await requireAdminSession();
-  if (session instanceof NextResponse) return session;
+  const start = Date.now();
+  const pathname = "/api/admin/logout";
 
-  try {
-    const cookieStore = await cookies();
-    cookieStore.delete(ADMIN_SESSION_COOKIE);
-    return NextResponse.json({ ok: true });
-  } catch (error: any) {
-    console.error("Error logging out admin:", error);
-    return NextResponse.json({ error: "Internal Server Error", details: error.message }, { status: 500 });
-  }
+  const cookieStore = await cookies();
+  cookieStore.set("admin_jwt", "", { maxAge: 0, path: "/" });
+  cookieStore.set("admin_session", "", { maxAge: 0, path: "/" });
+
+  logApiExecution("POST", pathname, 200, Date.now() - start, "Cookies cleared");
+  return NextResponse.json({ ok: true });
 }

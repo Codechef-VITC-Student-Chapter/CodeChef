@@ -1,38 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { ADMIN_SESSION_COOKIE, adminSessionCookieOptions, createSessionCookieValue } from "@/lib/adminSession";
+import { logApiExecution, logBackendForward } from "@/lib/logger";
 
-function getAdminAccounts(): Array<{ email: string; password: string }> {
-  return [
-    { email: process.env.ADMIN_1_EMAIL || "", password: process.env.ADMIN_1_PASSWORD || "" },
-    { email: process.env.ADMIN_2_EMAIL || "", password: process.env.ADMIN_2_PASSWORD || "" },
-  ].filter((account) => account.email && account.password);
-}
+const EXPRESS_BASE_URL = process.env.EXPRESS_API_URL || "http://localhost:4002";
 
 export async function POST(req: NextRequest) {
+  const start = Date.now();
+  const pathname = "/api/admin/login";
+
   try {
     const { email, password } = await req.json();
-
     if (!email || !password) {
+      logApiExecution("POST", pathname, 401, Date.now() - start, "Missing email or password");
       return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
     }
 
-    const accounts = getAdminAccounts();
-    const match = accounts.find(
-      (account) => account.email === email && account.password === password
-    );
+    const targetUrl = `${EXPRESS_BASE_URL}/api/auth/login`;
+    logBackendForward("POST", pathname, targetUrl);
 
-    if (!match) {
-      return NextResponse.json({ error: "Invalid email or password." }, { status: 401 });
+    const res = await fetch(targetUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      logApiExecution("POST", pathname, 401, Date.now() - start, "Invalid credentials");
+      return NextResponse.json({ error: data.error || "Invalid email or password." }, { status: 401 });
     }
 
-    const sessionValue = await createSessionCookieValue(match.email);
+    const { token, role, department } = await res.json();
     const cookieStore = await cookies();
-    cookieStore.set(ADMIN_SESSION_COOKIE, sessionValue, adminSessionCookieOptions);
+    cookieStore.set("admin_jwt", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60,
+    });
 
-    return NextResponse.json({ ok: true });
-  } catch (error: any) {
-    console.error("Error logging in admin:", error);
-    return NextResponse.json({ error: "Internal Server Error", details: error.message }, { status: 500 });
+    logApiExecution("POST", pathname, 200, Date.now() - start, `Logged in: role=${role}, dept=${department || "all"}`);
+    return NextResponse.json({ ok: true, role, department });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Internal Server Error";
+    console.error("Login proxy error:", error);
+    logApiExecution("POST", pathname, 500, Date.now() - start, msg);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
