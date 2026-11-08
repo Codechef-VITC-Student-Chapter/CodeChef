@@ -50,6 +50,7 @@ app.use(
       "http://localhost:3001",
       "http://127.0.0.1:3001",
       "https://codechef-vitcc.com",
+      "https://codechefvitc.in"
     ],
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
